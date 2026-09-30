@@ -277,7 +277,25 @@ a, button, [role="button"], .chips span, label {
 .exp__pin { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; }
 .exp__head { padding-bottom: 0; width: 100%; padding-top: clamp(100px, 11vw, 140px); }
 .exp__head .sec-head { margin-bottom: 32px; }
-.exp__progress { height: 1px; background: color-mix(in srgb, var(--ivory) 15%, transparent); position: relative; }
+.exp__bar { display: flex; align-items: center; gap: 20px; }
+.exp__progress { flex: 1; height: 1px; background: color-mix(in srgb, var(--ivory) 15%, transparent); position: relative; }
+.exp__count { opacity: .7; min-width: 7ch; text-align: right; }
+.exp__nav { display: flex; gap: 8px; }
+.exp__btn {
+  width: 48px; height: 48px; border-radius: 50%; font-size: 18px;
+  border: 1px solid color-mix(in srgb, var(--ivory) 22%, transparent);
+  transition: background-color .3s, color .3s, border-color .3s, opacity .3s;
+}
+.exp__btn:hover:not(:disabled) { background: var(--ember); border-color: var(--ember); color: var(--ink); }
+.exp__btn:disabled { opacity: .3; cursor: default; }
+/* swipe carousel: touch devices and narrow windows */
+.experience.is-swipe .exp__track {
+  width: auto; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-left: var(--gutter);
+  overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.experience.is-swipe .exp__track::-webkit-scrollbar { display: none; }
+.experience.is-swipe .exp-card { scroll-snap-align: start; }
+.experience.is-swipe .exp__track::after { content: ''; flex: none; width: 1px; }
 .exp__progress i { position: absolute; inset: 0; background: var(--ember); transform-origin: left; transform: scaleX(0); }
 .exp__track { display: flex; gap: 24px; padding: 40px var(--gutter) clamp(60px, 8vw, 100px); width: max-content; will-change: transform; }
 .exp-card {
@@ -480,6 +498,7 @@ a, button, [role="button"], .chips span, label {
   .exp__track { flex-direction: column; width: auto; }
   .exp-card { width: 100%; min-height: 0; }
   .exp-card--intro { display: none; }
+  .exp__count, .exp__nav { display: none; }
   .case__meta { grid-template-columns: 1fr 1fr; }
   .case__thumbs button { width: 96px; }
 }

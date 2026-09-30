@@ -119,7 +119,8 @@ function initTransitions() {
     if (i === 0 || reduced) return;
     const prev = panels[i - 1];
     const prevColor = COLORS[prev.dataset.theme];
-    const behind = $$(':scope > .panel__inner, .exp__head, .exp__track', prev);
+    // the experience track is excluded: scaling a track that wide would shove its cards sideways
+    const behind = $$(':scope > .panel__inner, .exp__head', prev);
     const tl = gsap.timeline({
       scrollTrigger: { trigger: panel, start: 'top bottom', end: 'top top', scrub: true },
       defaults: { ease: 'none' },
@@ -272,25 +273,93 @@ function initReveals() {
    Experience: horizontal track pinned while scrolling
    ------------------------------------------------------------------ */
 function initExperience() {
-  if (reduced) return;
+  const section = $('.experience');
+  const track = $('.exp__track');
+  const cards = $$('.exp-card', track);
+  const count = $('.exp__count');
+  const [prevBtn, nextBtn] = $$('.exp__btn');
+  let stops = [0];          // horizontal offsets where a card lines up with the left edge
+  let current = 0;
+  let goTo = () => {};      // set by the active layout below
+
+  const measure = (max) => {
+    const first = cards[0].offsetLeft;
+    stops = [...new Set(cards.map((c) => Math.min(max, Math.max(0, c.offsetLeft - first))))];
+  };
+  const setCurrent = (offset) => {
+    let best = 0;
+    stops.forEach((s, i) => { if (Math.abs(s - offset) < Math.abs(stops[best] - offset)) best = i; });
+    current = best;
+    count.textContent = `${String(best + 1).padStart(2, '0')} / ${String(stops.length).padStart(2, '0')}`;
+    prevBtn.disabled = best === 0 && offset < 4;
+    nextBtn.disabled = best === stops.length - 1;
+  };
+  prevBtn.addEventListener('click', () => goTo(current - 1));
+  nextBtn.addEventListener('click', () => goTo(current + 1));
+
   const mm = gsap.matchMedia();
-  mm.add('(min-width: 761px)', () => {
-    const track = $('.exp__track');
-    const dist = () => Math.max(0, track.scrollWidth - innerWidth);
-    const tween = gsap.to(track, {
-      x: () => -dist(), ease: 'none',
-      scrollTrigger: {
-        trigger: '.exp__pin', start: 'top top', end: () => `+=${dist()}`,
-        pin: true, scrub: 0.8, invalidateOnRefresh: true, anticipatePin: 1,
-      },
-    });
-    gsap.to('.exp__progress i', { scaleX: 1, ease: 'none', scrollTrigger: { trigger: '.exp__pin', start: 'top top', end: () => `+=${dist()}`, scrub: true } });
-    $$('.exp-card').forEach((card) => {
-      gsap.fromTo(card, { rotate: 3, y: 40, opacity: 0.35 }, {
-        rotate: 0, y: 0, opacity: 1, ease: 'power2.out',
-        scrollTrigger: { trigger: card, containerAnimation: tween, start: 'left 95%', end: 'left 55%', scrub: true },
+  mm.add({
+    pinned: '(min-width: 1024px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)',
+    wide: '(min-width: 761px)',
+  }, (ctx) => {
+    const { pinned, wide } = ctx.conditions;
+
+    if (pinned) {
+      // Pinned: vertical scroll drives the track. The run is ~2.4x the travel so each
+      // card stays readable, with a short hold on the first and the last card.
+      const HOLD = 0.15, MOVE = 1, TOTAL = HOLD + MOVE + HOLD;
+      const dist = () => Math.max(0, track.scrollWidth - innerWidth);
+      const tl = gsap.timeline({
+        defaults: { ease: 'none' },
+        scrollTrigger: {
+          trigger: '.exp__pin', start: 'top top', end: () => `+=${Math.round(dist() * 2.4 + innerHeight * 0.4)}`,
+          pin: true, scrub: 0.6, invalidateOnRefresh: true, anticipatePin: 1,
+          onRefresh: () => { measure(dist()); setCurrent(-gsap.getProperty(track, 'x')); },
+          onUpdate: () => setCurrent(-gsap.getProperty(track, 'x')),
+        },
       });
-    });
+      tl.to(track, { x: () => -dist(), duration: MOVE }, HOLD)
+        .fromTo('.exp__progress i', { scaleX: 0 }, { scaleX: 1, duration: MOVE }, HOLD)
+        .to({}, { duration: HOLD });
+
+      goTo = (i) => {
+        const st = tl.scrollTrigger;
+        const idx = gsap.utils.clamp(0, stops.length - 1, i);
+        const d = dist() || 1;
+        const progress = idx === 0 ? 0 : (HOLD + (stops[idx] / d) * MOVE) / TOTAL;
+        const y = st.start + progress * (st.end - st.start);
+        if (lenis) lenis.scrollTo(y, { duration: 1.1 }); else scrollTo({ top: y, behavior: 'smooth' });
+      };
+      measure(dist());
+      setCurrent(0);
+      return () => { goTo = () => {}; };
+    }
+
+    if (wide) {
+      // Touch devices and narrow windows: a native swipe carousel, free to go back and forth.
+      section.classList.add('is-swipe');
+      const bar = $('.exp__progress i');
+      const onScroll = () => {
+        const max = track.scrollWidth - track.clientWidth;
+        gsap.set(bar, { scaleX: max > 0 ? track.scrollLeft / max : 1 });
+        setCurrent(track.scrollLeft);
+      };
+      const onResize = () => { measure(track.scrollWidth - track.clientWidth); onScroll(); };
+      track.addEventListener('scroll', onScroll, { passive: true });
+      addEventListener('resize', onResize);
+      goTo = (i) => {
+        const idx = gsap.utils.clamp(0, stops.length - 1, i);
+        track.scrollTo({ left: stops[idx], behavior: reduced ? 'auto' : 'smooth' });
+      };
+      onResize();
+      return () => {
+        section.classList.remove('is-swipe');
+        track.removeEventListener('scroll', onScroll);
+        removeEventListener('resize', onResize);
+        gsap.set(bar, { clearProps: 'transform' });
+        goTo = () => {};
+      };
+    }
   });
 }
 
