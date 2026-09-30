@@ -1,0 +1,7 @@
+[
+ {"name":"learnova-1","url":"http://localhost:3100/"},
+ {"name":"learnova-login","url":"http://localhost:3100/login"},
+ {"name":"rakcha-1","url":"http://localhost:4400/"},
+ {"name":"lidara-1","url":"http://127.0.0.1:5000/"},
+ {"name":"tuni-1","url":"https://tuni-tech-advisor.vercel.app/","wait":6000}
+]
