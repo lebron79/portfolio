@@ -277,89 +277,91 @@ function initExperience() {
   const track = $('.exp__track');
   const cards = $$('.exp-card', track);
   const count = $('.exp__count');
+  const bar = $('.exp__progress i');
   const [prevBtn, nextBtn] = $$('.exp__btn');
-  let stops = [0];          // horizontal offsets where a card lines up with the left edge
+  let stops = [0];   // scroll offsets where a card lines up with the left edge
   let current = 0;
-  let goTo = () => {};      // set by the active layout below
 
-  const measure = (max) => {
+  const maxScroll = () => Math.max(0, track.scrollWidth - track.clientWidth);
+  const measure = () => {
     const first = cards[0].offsetLeft;
-    stops = [...new Set(cards.map((c) => Math.min(max, Math.max(0, c.offsetLeft - first))))];
+    stops = [...new Set(cards.map((c) => Math.min(maxScroll(), Math.max(0, c.offsetLeft - first))))];
   };
-  const setCurrent = (offset) => {
+  const update = () => {
+    const x = track.scrollLeft, max = maxScroll();
+    gsap.set(bar, { scaleX: max > 0 ? x / max : 1 });
     let best = 0;
-    stops.forEach((s, i) => { if (Math.abs(s - offset) < Math.abs(stops[best] - offset)) best = i; });
+    stops.forEach((s, i) => { if (Math.abs(s - x) < Math.abs(stops[best] - x)) best = i; });
     current = best;
     count.textContent = `${String(best + 1).padStart(2, '0')} / ${String(stops.length).padStart(2, '0')}`;
-    prevBtn.disabled = best === 0 && offset < 4;
-    nextBtn.disabled = best === stops.length - 1;
+    prevBtn.disabled = x < 4;
+    nextBtn.disabled = x > max - 4;
   };
+  const glide = (left) => gsap.to(track, {
+    scrollLeft: gsap.utils.clamp(0, maxScroll(), left),
+    duration: reduced ? 0 : 0.7, ease: 'power3.out', overwrite: true,
+  });
+  const goTo = (i) => glide(stops[gsap.utils.clamp(0, stops.length - 1, i)]);
   prevBtn.addEventListener('click', () => goTo(current - 1));
   nextBtn.addEventListener('click', () => goTo(current + 1));
 
+  // A wheel gesture that STARTS on the cards scrolls them sideways; a gesture that began
+  // elsewhere (someone scrolling the page) passes straight through. At either end the
+  // wheel goes back to the page, so nobody is ever held in this section.
+  let lastWheel = 0, gestureOnTrack = false, target = 0;
+  addEventListener('wheel', (e) => {
+    const now = performance.now();
+    if (now - lastWheel > 220) { gestureOnTrack = track.contains(e.target); target = track.scrollLeft; }
+    lastWheel = now;
+  }, { capture: true, passive: true });
+  track.addEventListener('wheel', (e) => {
+    if (!section.classList.contains('is-swipe')) return;
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.stopPropagation(); return; } // native sideways swipe
+    if (!gestureOnTrack) return;
+    const max = maxScroll();
+    const dy = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+    if ((dy > 0 && target >= max - 1) || (dy < 0 && target <= 1)) return; // at an end: let the page scroll
+    e.preventDefault();
+    e.stopPropagation();
+    target = gsap.utils.clamp(0, max, target + dy * 1.2);
+    gsap.to(track, { scrollLeft: target, duration: reduced ? 0 : 0.6, ease: 'power3.out', overwrite: true });
+  }, { passive: false });
+
+  // drag with the mouse
+  let drag = null;
+  track.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !section.classList.contains('is-swipe')) return;
+    drag = { x: e.clientX, left: track.scrollLeft, moved: false };
+  });
+  addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) > 6) { drag.moved = true; track.classList.add('is-dragging'); gsap.killTweensOf(track); }
+    if (drag.moved) track.scrollLeft = drag.left - dx;
+  });
+  addEventListener('pointerup', () => {
+    if (drag?.moved) {
+      // settle on the nearest card
+      const x = track.scrollLeft;
+      glide(stops.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a)));
+      requestAnimationFrame(() => track.classList.remove('is-dragging'));
+    }
+    drag = null;
+  });
+
   const mm = gsap.matchMedia();
-  mm.add({
-    pinned: '(min-width: 1024px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)',
-    wide: '(min-width: 761px)',
-  }, (ctx) => {
-    const { pinned, wide } = ctx.conditions;
-
-    if (pinned) {
-      // Pinned: vertical scroll drives the track. The run is ~2.4x the travel so each
-      // card stays readable, with a short hold on the first and the last card.
-      const HOLD = 0.15, MOVE = 1, TOTAL = HOLD + MOVE + HOLD;
-      const dist = () => Math.max(0, track.scrollWidth - innerWidth);
-      const tl = gsap.timeline({
-        defaults: { ease: 'none' },
-        scrollTrigger: {
-          trigger: '.exp__pin', start: 'top top', end: () => `+=${Math.round(dist() * 2.4 + innerHeight * 0.4)}`,
-          pin: true, scrub: 0.6, invalidateOnRefresh: true, anticipatePin: 1,
-          onRefresh: () => { measure(dist()); setCurrent(-gsap.getProperty(track, 'x')); },
-          onUpdate: () => setCurrent(-gsap.getProperty(track, 'x')),
-        },
-      });
-      tl.to(track, { x: () => -dist(), duration: MOVE }, HOLD)
-        .fromTo('.exp__progress i', { scaleX: 0 }, { scaleX: 1, duration: MOVE }, HOLD)
-        .to({}, { duration: HOLD });
-
-      goTo = (i) => {
-        const st = tl.scrollTrigger;
-        const idx = gsap.utils.clamp(0, stops.length - 1, i);
-        const d = dist() || 1;
-        const progress = idx === 0 ? 0 : (HOLD + (stops[idx] / d) * MOVE) / TOTAL;
-        const y = st.start + progress * (st.end - st.start);
-        if (lenis) lenis.scrollTo(y, { duration: 1.1 }); else scrollTo({ top: y, behavior: 'smooth' });
-      };
-      measure(dist());
-      setCurrent(0);
-      return () => { goTo = () => {}; };
-    }
-
-    if (wide) {
-      // Touch devices and narrow windows: a native swipe carousel, free to go back and forth.
-      section.classList.add('is-swipe');
-      const bar = $('.exp__progress i');
-      const onScroll = () => {
-        const max = track.scrollWidth - track.clientWidth;
-        gsap.set(bar, { scaleX: max > 0 ? track.scrollLeft / max : 1 });
-        setCurrent(track.scrollLeft);
-      };
-      const onResize = () => { measure(track.scrollWidth - track.clientWidth); onScroll(); };
-      track.addEventListener('scroll', onScroll, { passive: true });
-      addEventListener('resize', onResize);
-      goTo = (i) => {
-        const idx = gsap.utils.clamp(0, stops.length - 1, i);
-        track.scrollTo({ left: stops[idx], behavior: reduced ? 'auto' : 'smooth' });
-      };
-      onResize();
-      return () => {
-        section.classList.remove('is-swipe');
-        track.removeEventListener('scroll', onScroll);
-        removeEventListener('resize', onResize);
-        gsap.set(bar, { clearProps: 'transform' });
-        goTo = () => {};
-      };
-    }
+  mm.add('(min-width: 761px)', () => {
+    section.classList.add('is-swipe');
+    const onResize = () => { measure(); update(); };
+    track.addEventListener('scroll', update, { passive: true });
+    addEventListener('resize', onResize);
+    onResize();
+    return () => {
+      section.classList.remove('is-swipe');
+      track.removeEventListener('scroll', update);
+      removeEventListener('resize', onResize);
+      gsap.set(bar, { clearProps: 'transform' });
+    };
   });
 }
 

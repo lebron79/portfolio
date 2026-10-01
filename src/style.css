@@ -288,14 +288,20 @@ a, button, [role="button"], .chips span, label {
 }
 .exp__btn:hover:not(:disabled) { background: var(--ember); border-color: var(--ember); color: var(--ink); }
 .exp__btn:disabled { opacity: .3; cursor: default; }
-/* swipe carousel: touch devices and narrow windows */
+/* horizontal carousel: the page never locks; the cards scroll only when you scroll on them */
 .experience.is-swipe .exp__track {
-  width: auto; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-left: var(--gutter);
-  overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  width: auto; overflow-x: auto; overscroll-behavior-x: contain;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  cursor: grab;
 }
+.experience.is-swipe .exp__track.is-dragging { cursor: grabbing; user-select: none; }
+.experience.is-swipe .exp__track.is-dragging a { pointer-events: none; }
 .experience.is-swipe .exp__track::-webkit-scrollbar { display: none; }
-.experience.is-swipe .exp-card { scroll-snap-align: start; }
 .experience.is-swipe .exp__track::after { content: ''; flex: none; width: 1px; }
+@media (pointer: coarse) {
+  .experience.is-swipe .exp__track { scroll-snap-type: x mandatory; scroll-padding-left: var(--gutter); }
+  .experience.is-swipe .exp-card { scroll-snap-align: start; }
+}
 .exp__progress i { position: absolute; inset: 0; background: var(--ember); transform-origin: left; transform: scaleX(0); }
 .exp__track { display: flex; gap: 24px; padding: 40px var(--gutter) clamp(60px, 8vw, 100px); width: max-content; will-change: transform; }
 .exp-card {
